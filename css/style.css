@@ -755,6 +755,60 @@ body.mobile-nav-active #mobile-nav-toggle {
   color: #fff;
 }
 
+
+/* lantian */
+/* Slideshow container */
+#slide .slideshow-container {
+  position: relative;
+  margin: auto;
+}
+
+#slide h1 {
+  color: #fff;
+  font-family: "Raleway", sans-serif;
+  font-size: 56px;
+  font-weight: 600;
+  bottom: 40%;
+  text-transform: uppercase;
+}
+
+/* Caption text */
+#slide h1 {
+  color: #fff;
+  font-family: "Raleway", sans-serif;
+  font-size: 56px;
+  font-weight: 600;
+  bottom: 40%;
+  position: absolute;
+  text-transform: uppercase;
+  width: 100%;
+  text-align: center;
+}
+#slide p {
+  color: #fff;
+  font-family: "Raleway", sans-serif;
+  font-size: 20px;
+  font-weight: 300;
+  bottom: 35%;
+  position: absolute;
+  text-transform: uppercase;
+  width: 100%;
+  text-align: center;
+}
+
+#slide img{
+  width:100%;
+  display: flex;
+}
+
+#slide .mySlides{
+  background: rgba(6, 12, 34, 0.8);
+}
+
+
+
+
+
 @-webkit-keyframes pulsate-btn {
   0% {
     -webkit-transform: scale(0.6, 0.6);
