@@ -425,7 +425,7 @@ h6 {
 
 .nav-subnav .menu-active a,
 .nav-subnav a:hover {
-  color: #fff; 
+  color: #fff;
 }
 
 .nav-subnav > li > a:before {
@@ -843,7 +843,7 @@ body.mobile-nav-active #mobile-nav-toggle {
 --------------------------------------------------------------*/
 
 #about {
-  background: url("../img/group202011.jpg");
+  background: url("../img/group.jpg");
   background-size: cover;
   overflow: hidden;
   position: relative;
@@ -1370,7 +1370,7 @@ body.mobile-nav-active #mobile-nav-toggle {
   float: left;
   margin: 5px;
   display: none; /* Hidden by default */
- 
+
 }
 
 #venue .show {
@@ -1418,7 +1418,7 @@ body.mobile-nav-active #mobile-nav-toggle {
 }
 
 #venue .project .title a:hover {
- 
+
   color: #f82249;
 }
 
