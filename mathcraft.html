@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MathCraft: Legend of the Demon King</title>
+    <!-- Tailwind for UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Font -->
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'VT323', monospace;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            background-color: #000;
+        }
+        
+        #game-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transition: opacity 1s;
+        }
+
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.8);
+        }
+        #crosshair::before { top: 9px; left: 0; width: 20px; height: 2px; }
+        #crosshair::after { top: 0; left: 9px; width: 2px; height: 20px; }
+
+        .pixel-font { font-family: 'VT323', monospace; }
+
+        .mc-btn {
+            background-color: #7d7d7d;
+            border: 4px solid #3d3d3d;
+            border-top-color: #a0a0a0;
+            border-left-color: #a0a0a0;
+            color: white;
+            text-shadow: 2px 2px 0 #000;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .mc-btn:active {
+            border: 4px solid #3d3d3d;
+            border-bottom-color: #a0a0a0;
+            border-right-color: #a0a0a0;
+            transform: scale(0.95);
+        }
+
+        .mc-panel {
+            background-color: #c6c6c6;
+            border: 4px solid #555;
+            box-shadow: 8px 8px 0 rgba(0,0,0,0.5);
+            image-rendering: pixelated;
+        }
+
+        #modal-overlay, #level-overlay, #victory-overlay, #boss-intro-overlay {
+            display: none;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 50;
+        }
+        
+        .dpad-btn {
+            width: 60px; height: 60px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 8px;
+            color: white; font-size: 30px;
+            backdrop-filter: blur(4px);
+            display: flex; justify-content: center; align-items: center;
+            user-select: none; cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .dpad-btn:active, .dpad-btn.active {
+            background: rgba(255, 255, 255, 0.5); transform: scale(0.95);
+        }
+
+        .touch-action-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            color: white; display: flex; align-items: center; justify-content: center;
+            font-size: 20px; font-weight: bold;
+            backdrop-filter: blur(4px);
+            user-select: none;
+        }
+        .touch-action-btn:active {
+            background: rgba(255, 255, 255, 0.4); transform: scale(0.95);
+        }
+        
+        .floating-crown {
+            animation: float 3s ease-in-out infinite;
+        }
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+            100% { transform: translateY(0px); }
+        }
+
+        /* Boss Health Bar */
+        #boss-ui {
+            display: none;
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 300px;
+            text-align: center;
+        }
+        #boss-health-container {
+            width: 100%;
+            height: 20px;
+            background: #333;
+            border: 2px solid #fff;
+            margin-top: 5px;
+        }
+        #boss-health-fill {
+            width: 100%;
+            height: 100%;
+            background: #dc2626;
+            transition: width 0.5s;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Game World -->
+    <div id="game-container"></div>
+
+    <!-- UI Overlay -->
+    <div id="ui-layer" class="absolute inset-0 pointer-events-none overflow-hidden">
+        
+        <!-- Crosshair -->
+        <div id="crosshair"></div>
+
+        <!-- HUD -->
+        <div class="absolute top-4 left-4 flex gap-4 pointer-events-auto z-20">
+            <div class="mc-panel p-2 flex items-center gap-2">
+                <div class="w-8 h-8 bg-yellow-400 border-2 border-white shadow-inner flex items-center justify-center font-bold text-yellow-800">★</div>
+                <span class="text-3xl pixel-font text-black" id="score-display">0</span>
+            </div>
+            <div class="mc-panel p-2 flex items-center gap-2">
+                <span class="text-2xl pixel-font text-black" id="level-display">Level 1: Grassland</span>
+            </div>
+        </div>
+
+        <!-- Boss UI -->
+        <div id="boss-ui" class="pointer-events-none z-20">
+            <h2 class="text-3xl text-red-500 font-bold pixel-font" style="text-shadow: 2px 2px 0 #000;">DEMON KING</h2>
+            <div id="boss-health-container">
+                <div id="boss-health-fill"></div>
+            </div>
+        </div>
+
+        <!-- Mobile Controls -->
+        <div id="mobile-controls" class="absolute inset-0 pointer-events-auto z-10" style="display: none;">
+            <div class="absolute bottom-6 left-6 grid grid-cols-3 gap-2">
+                <div></div> <div id="btn-up" class="dpad-btn">▲</div> <div></div>
+                <div id="btn-left" class="dpad-btn">◀</div> <div id="btn-down" class="dpad-btn">▼</div> <div id="btn-right" class="dpad-btn">▶</div>
+            </div>
+            <div class="absolute bottom-12 right-6 flex gap-6 items-end">
+                <button id="btn-jump" class="touch-action-btn w-20 h-20 bg-green-500/30 border-green-300">JUMP</button>
+                <button id="btn-mine" class="touch-action-btn w-24 h-24 bg-yellow-500/30 border-yellow-300 text-xl">MINE</button>
+            </div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="absolute inset-0 flex items-center justify-center bg-black/90 pointer-events-auto z-40">
+            <div class="mc-panel p-6 text-center max-w-lg w-[90%]">
+                <h1 class="text-5xl md:text-6xl mb-2 text-green-700 font-bold pixel-font" style="text-shadow: 3px 3px 0 #fff;">MATHCRAFT</h1>
+                <p class="text-xl mb-4 text-gray-800 pixel-font">Hero's Journey</p>
+                
+                <div class="grid grid-cols-4 gap-2 mb-6 text-xs md:text-sm">
+                    <div class="bg-green-200 p-1 border border-green-600 rounded">
+                        <div class="text-xl">🌲</div>Grass<br>1-5 Tables
+                    </div>
+                    <div class="bg-gray-400 p-1 border border-gray-600 rounded">
+                        <div class="text-xl">🦇</div>Cave<br>6-9 Tables
+                    </div>
+                    <div class="bg-purple-300 p-1 border border-purple-600 rounded">
+                        <div class="text-xl">🏰</div>Castle<br>10-12 Tables
+                    </div>
+                    <div class="bg-red-400 p-1 border border-red-600 rounded text-white font-bold">
+                        <div class="text-xl">👹</div>BOSS<br>Word Problems
+                    </div>
+                </div>
+                
+                <button id="start-btn" class="mc-btn px-8 py-4 text-3xl w-full">START ADVENTURE</button>
+            </div>
+        </div>
+
+        <!-- Question Modal -->
+        <div id="modal-overlay" class="absolute inset-0 flex items-center justify-center pointer-events-auto">
+            <div class="mc-panel p-6 w-[90%] max-w-lg text-center relative">
+                <div class="absolute -top-10 left-1/2 transform -translate-x-1/2 w-20 h-20 bg-yellow-400 border-4 border-yellow-600 animate-bounce flex items-center justify-center text-4xl font-bold text-white shadow-lg">?</div>
+                <h2 class="text-4xl mt-8 mb-2 pixel-font font-bold text-gray-800" id="q-title">Solve This!</h2>
+                <div class="bg-gray-800 text-white p-4 my-4 text-3xl md:text-4xl pixel-font border-4 border-gray-500 rounded leading-relaxed" id="question-text">3 x 4 = ?</div>
+                <div class="grid grid-cols-2 gap-4 mt-4" id="answers-grid"></div>
+                <div id="feedback" class="h-8 mt-2 text-2xl font-bold pixel-font text-red-600"></div>
+            </div>
+        </div>
+
+        <!-- Level Complete Overlay -->
+        <div id="level-overlay" class="absolute inset-0 flex items-center justify-center bg-black pointer-events-auto">
+             <div class="text-center text-white">
+                 <h2 class="text-6xl pixel-font text-yellow-400 mb-4">LEVEL COMPLETE!</h2>
+                 <p class="text-2xl pixel-font" id="level-transition-text">Traveling...</p>
+                 <div class="mt-8 text-4xl animate-pulse">Loading...</div>
+             </div>
+        </div>
+
+        <!-- Boss Intro -->
+        <div id="boss-intro-overlay" class="absolute inset-0 flex items-center justify-center bg-red-900/90 pointer-events-auto">
+            <div class="text-center text-white max-w-lg p-4">
+                <h2 class="text-6xl pixel-font text-red-500 mb-4 font-bold" style="text-shadow: 4px 4px 0 #000;">THE DEMON KING</h2>
+                <p class="text-2xl pixel-font mb-6">"You solved my puzzles, but can you solve my RIDDLES?"</p>
+                <div class="text-xl bg-black/50 p-4 border border-red-500 mb-6">
+                    Solve <b>5 Word Problems</b> to defeat him and win the Crown!
+                </div>
+                <button onclick="document.getElementById('boss-intro-overlay').style.display='none'; if(!state.isMobile) document.body.requestPointerLock();" class="mc-btn px-8 py-4 text-3xl bg-red-600 border-red-800">FIGHT!</button>
+            </div>
+       </div>
+
+        <!-- Victory Overlay -->
+        <div id="victory-overlay" class="absolute inset-0 flex items-center justify-center bg-yellow-500/95 pointer-events-auto">
+            <div class="mc-panel p-8 text-center max-w-lg w-[90%] border-yellow-800 shadow-2xl">
+                <div class="text-8xl mb-4 floating-crown">👑</div>
+                <h1 class="text-6xl mb-4 text-yellow-900 font-bold pixel-font">HERO!</h1>
+                <p class="text-3xl mb-6 text-gray-800 pixel-font">The Demon King is Defeated!</p>
+                <div class="text-xl mb-8">You have mastered the Multiplication Tables.</div>
+                <button onclick="location.reload()" class="mc-btn px-8 py-4 text-3xl w-full bg-green-600 border-green-800">PLAY AGAIN</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- 1. Game Config ---
+        const config = {
+            moveSpeed: 10,
+            jumpForce: 13,
+            gravity: 32,
+            worldSize: 60,
+            questionBlockCount: 12,
+            bossMaxHealth: 5
+        };
+
+        const state = {
+            score: 0,
+            level: 1, 
+            bossDamage: 0,
+            isGameActive: false,
+            isLocked: false,
+            isMobile: false,
+            velocity: new THREE.Vector3(),
+            direction: new THREE.Vector3(),
+            moveForward: false, moveBackward: false, moveLeft: false, moveRight: false,
+            canJump: false,
+            currentQuestion: null,
+            targetBlock: null
+        };
+
+        // --- 2. Textures ---
+        function createTexture(color, noiseAmount = 20, type = 'noise') {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = color; ctx.fillRect(0, 0, 64, 64);
+            
+            if (type === 'noise') {
+                const pixelSize = 8;
+                for (let x=0; x<64; x+=pixelSize) {
+                    for (let y=0; y<64; y+=pixelSize) {
+                        if (Math.random()>0.6) {
+                            const shade = (Math.random()-0.5)*noiseAmount;
+                            ctx.fillStyle = `rgba(0,0,0, ${shade>0?shade/255:0})`;
+                            if (shade<0) ctx.fillStyle = `rgba(255,255,255, ${Math.abs(shade)/255})`;
+                            ctx.fillRect(x,y,pixelSize,pixelSize);
+                        }
+                    }
+                }
+            } else if (type === 'brick') {
+                ctx.fillStyle = "rgba(0,0,0,0.1)";
+                for(let y=0; y<64; y+=16) {
+                    ctx.fillRect(0,y,64,2);
+                    let offset = (y/16)%2===0?0:16;
+                    for(let x=offset; x<64; x+=32) ctx.fillRect(x,y,2,16);
+                }
+            }
+            ctx.strokeStyle = "rgba(0,0,0,0.15)"; ctx.lineWidth = 4; ctx.strokeRect(0,0,64,64);
+            const t = new THREE.CanvasTexture(canvas); t.magFilter = THREE.NearestFilter;
+            return t;
+        }
+
+        const textures = {
+            grass: createTexture('#4ade80', 30),
+            dirt: createTexture('#5d4037', 40),
+            stone: createTexture('#9ca3af', 30),
+            darkStone: createTexture('#374151', 40), 
+            stoneBrick: createTexture('#9ca3af', 20, 'brick'),
+            wood: createTexture('#451a03', 50),
+            leaves: createTexture('#15803d', 60),
+            crystal: createTexture('#a855f7', 80), 
+            obsidian: createTexture('#1f0030', 20), // Boss floor
+            lava: createTexture('#ef4444', 60), // Boss accent
+            demonSkin: createTexture('#991b1b', 40),
+            question: null,
+            bossOrb: null
+        };
+
+        // Question Texture
+        const qCanvas = document.createElement('canvas'); qCanvas.width=64; qCanvas.height=64;
+        const qCtx = qCanvas.getContext('2d');
+        qCtx.drawImage(createTexture('#facc15', 40).image, 0, 0);
+        qCtx.fillStyle='#b45309'; qCtx.font='bold 40px monospace'; qCtx.textAlign='center'; qCtx.textBaseline='middle';
+        qCtx.fillText('?', 32, 34); qCtx.lineWidth=4; qCtx.strokeRect(4,4,56,56);
+        textures.question = new THREE.CanvasTexture(qCanvas); textures.question.magFilter=THREE.NearestFilter;
+
+        // Boss Orb Texture
+        const oCanvas = document.createElement('canvas'); oCanvas.width=64; oCanvas.height=64;
+        const oCtx = oCanvas.getContext('2d');
+        oCtx.drawImage(createTexture('#dc2626', 60).image, 0, 0);
+        oCtx.fillStyle='#000'; oCtx.font='bold 40px monospace'; oCtx.textAlign='center'; oCtx.textBaseline='middle';
+        oCtx.fillText('!', 32, 34); oCtx.lineWidth=4; oCtx.strokeRect(4,4,56,56);
+        textures.bossOrb = new THREE.CanvasTexture(oCanvas); textures.bossOrb.magFilter=THREE.NearestFilter;
+
+        // --- 3. Scene ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.getElementById('game-container').appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.6); dirLight.position.set(50, 100, 50); scene.add(dirLight);
+
+        // --- 4. World Gen ---
+        let worldObjects = [];
+        let interactables = [];
+        let groundMesh = null;
+        let bossGroup = null;
+
+        function clearWorld() {
+            worldObjects.forEach(o => scene.remove(o)); worldObjects = [];
+            interactables.forEach(o => scene.remove(o)); interactables = [];
+            if(groundMesh) scene.remove(groundMesh);
+            if(bossGroup) { scene.remove(bossGroup); bossGroup = null; }
+        }
+
+        function createBlock(x, y, z, type) {
+            const geo = new THREE.BoxGeometry(1, 1, 1);
+            let mat;
+            switch(type) {
+                case 'wood': mat = new THREE.MeshLambertMaterial({map:textures.wood}); break;
+                case 'leaves': mat = new THREE.MeshLambertMaterial({map:textures.leaves, transparent:true, opacity:0.9}); break;
+                case 'stone': mat = new THREE.MeshLambertMaterial({map:textures.stone}); break;
+                case 'stoneBrick': mat = new THREE.MeshLambertMaterial({map:textures.stoneBrick}); break;
+                case 'crystal': mat = new THREE.MeshLambertMaterial({map:textures.crystal, emissive:0x4400aa}); break;
+                case 'obsidian': mat = new THREE.MeshLambertMaterial({map:textures.obsidian}); break;
+                case 'demon': mat = new THREE.MeshLambertMaterial({map:textures.demonSkin}); break;
+                case 'gold': mat = new THREE.MeshLambertMaterial({map:textures.question}); break;
+                case 'orb': mat = new THREE.MeshLambertMaterial({map:textures.bossOrb, emissive:0x550000}); break;
+                default: mat = new THREE.MeshLambertMaterial({color:0xff00ff});
+            }
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(x, y+0.5, z);
+            scene.add(mesh);
+            worldObjects.push(mesh);
+            if(type==='gold' || type==='orb') {
+                mesh.userData = { isQuestion: true, active: true, originalY: y+0.5, type: type };
+                interactables.push(mesh);
+            }
+            return mesh;
+        }
+
+        function generateLevel(lvl) {
+            clearWorld();
+            document.getElementById('boss-ui').style.display = 'none';
+
+            let groundTex, bgColor, fogColor, fogDist;
+            
+            if(lvl === 1) { // Grass
+                groundTex = textures.grass; bgColor = 0x87CEEB; fogColor = 0x87CEEB; fogDist = 50;
+                document.getElementById('level-display').textContent = "Level 1: Grassland";
+                document.getElementById('level-display').style.color = "black";
+                generateProps(1);
+            } else if(lvl === 2) { // Cave
+                groundTex = textures.darkStone; bgColor = 0x202020; fogColor = 0x202020; fogDist = 30;
+                document.getElementById('level-display').textContent = "Level 2: The Deep Cave";
+                document.getElementById('level-display').style.color = "white";
+                generateProps(2);
+            } else if(lvl === 3) { // Castle
+                groundTex = textures.stoneBrick; bgColor = 0x1a0b2e; fogColor = 0x1a0b2e; fogDist = 60;
+                document.getElementById('level-display').textContent = "Level 3: The Castle";
+                document.getElementById('level-display').style.color = "white";
+                generateProps(3);
+            } else if(lvl === 4) { // Boss
+                groundTex = textures.obsidian; bgColor = 0x2b0000; fogColor = 0x2b0000; fogDist = 40;
+                document.getElementById('level-display').textContent = "BOSS LEVEL";
+                document.getElementById('level-display').style.color = "red";
+                document.getElementById('boss-ui').style.display = 'block';
+                createDemonBoss();
+                generateProps(4);
+            }
+
+            scene.background = new THREE.Color(bgColor);
+            scene.fog = new THREE.Fog(fogColor, 10, fogDist);
+
+            const groundGeo = new THREE.PlaneGeometry(200, 200);
+            const groundMat = new THREE.MeshLambertMaterial({ map: groundTex });
+            groundMat.map.repeat.set(50, 50); groundMat.map.wrapS = THREE.RepeatWrapping; groundMat.map.wrapT = THREE.RepeatWrapping;
+            groundMesh = new THREE.Mesh(groundGeo, groundMat);
+            groundMesh.rotation.x = -Math.PI/2;
+            scene.add(groundMesh);
+
+            controls.position.set(0, 1.6, lvl===4 ? 15 : 0); // Spawn further back for boss
+            if(lvl===4) controls.rotation.y = Math.PI; // Face boss
+            state.velocity.set(0,0,0);
+        }
+
+        function createDemonBoss() {
+            bossGroup = new THREE.Group();
+            scene.add(bossGroup);
+            // Legs
+            const legGeo = new THREE.BoxGeometry(2, 6, 2);
+            const skinMat = new THREE.MeshLambertMaterial({map: textures.demonSkin});
+            const lLeg = new THREE.Mesh(legGeo, skinMat); lLeg.position.set(-2, 3, 0); bossGroup.add(lLeg);
+            const rLeg = new THREE.Mesh(legGeo, skinMat); rLeg.position.set(2, 3, 0); bossGroup.add(rLeg);
+            // Body
+            const body = new THREE.Mesh(new THREE.BoxGeometry(6, 6, 3), skinMat); body.position.set(0, 8, 0); bossGroup.add(body);
+            // Head
+            const head = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 3), skinMat); head.position.set(0, 13, 0); bossGroup.add(head);
+            // Horns
+            const horn = new THREE.Mesh(new THREE.BoxGeometry(0.5, 2, 0.5), new THREE.MeshLambertMaterial({color:0x000000}));
+            const h1 = horn.clone(); h1.position.set(-1.5, 15, 0); bossGroup.add(h1);
+            const h2 = horn.clone(); h2.position.set(1.5, 15, 0); bossGroup.add(h2);
+            // Eyes
+            const eye = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshBasicMaterial({color:0xff0000}));
+            const e1 = eye.clone(); e1.position.set(-0.8, 13, 1.3); bossGroup.add(e1);
+            const e2 = eye.clone(); e2.position.set(0.8, 13, 1.3); bossGroup.add(e2);
+            
+            bossGroup.position.set(0, 0, -10);
+            
+            // Add intro overlay
+            setTimeout(() => {
+                if(state.isLocked) document.exitPointerLock();
+                document.getElementById('boss-intro-overlay').style.display = 'flex';
+            }, 500);
+        }
+
+        function generateProps(lvl) {
+            if(lvl === 1) {
+                for(let i=0; i<25; i++) {
+                    const x = rRange(-30, 30); const z = rRange(-30, 30);
+                    if(Math.abs(x)<5 && Math.abs(z)<5) continue;
+                    createTree(x, z);
+                }
+            } else if(lvl === 2) {
+                for(let i=0; i<40; i++) {
+                    const x = rRange(-30, 30); const z = rRange(-30, 30);
+                    if(Math.abs(x)<5 && Math.abs(z)<5) continue;
+                    const h = Math.floor(Math.random()*4)+1;
+                    for(let y=0; y<h; y++) createBlock(x, y, z, Math.random()>0.8 ? 'crystal':'stone');
+                }
+            } else if(lvl === 3) {
+                for(let i=0; i<30; i++) {
+                    const x = rRange(-30, 30); const z = rRange(-30, 30);
+                    if(Math.abs(x)<5 && Math.abs(z)<5) continue;
+                    const h = Math.floor(Math.random()*3)+2;
+                    for(let y=0; y<h; y++) createBlock(x, y, z, 'stoneBrick');
+                    createBlock(x, h, z, 'stone');
+                }
+            } else if(lvl === 4) {
+                // Pillars in Boss room
+                createBlock(-10, 0, 0, 'obsidian'); createBlock(-10, 1, 0, 'lava');
+                createBlock(10, 0, 0, 'obsidian'); createBlock(10, 1, 0, 'lava');
+                createBlock(-10, 0, -20, 'obsidian'); createBlock(-10, 1, -20, 'lava');
+                createBlock(10, 0, -20, 'obsidian'); createBlock(10, 1, -20, 'lava');
+            }
+
+            // Questions
+            const count = lvl === 4 ? 12 : config.questionBlockCount;
+            const type = lvl === 4 ? 'orb' : 'gold';
+            
+            for(let i=0; i<count; i++) {
+                const x = rRange(-25, 25); const z = rRange(-25, 25);
+                if(Math.abs(x)<5 && Math.abs(z)<5) continue;
+                createBlock(x, 1 + Math.random()*2, z, type);
+            }
+        }
+
+        function createTree(x, z) {
+            const h = 3 + Math.floor(Math.random() * 2);
+            for(let y=0; y<h; y++) createBlock(x, y, z, 'wood');
+            for(let lx=x-1; lx<=x+1; lx++) {
+                for(let lz=z-1; lz<=z+1; lz++) {
+                    createBlock(lx, h, lz, 'leaves');
+                    if(Math.abs(lx-x)===0 || Math.abs(lz-z)===0) createBlock(lx, h+1, lz, 'leaves');
+                }
+            }
+            createBlock(x, h+2, z, 'leaves');
+        }
+        function rRange(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+        // --- 5. Logic ---
+        
+        const wordProblems = [
+            { t: "A spider has 8 legs. How many legs do %n spiders have?", v: 8 },
+            { t: "There are 7 days in a week. How many days in %n weeks?", v: 7 },
+            { t: "A box holds 9 donuts. How many donuts in %n boxes?", v: 9 },
+            { t: "A car has 4 wheels. How many wheels do %n cars have?", v: 4 },
+            { t: "Each pack has 6 cards. How many cards in %n packs?", v: 6 },
+            { t: "An octopus has 8 arms. How many arms do %n octopuses have?", v: 8 },
+            { t: "There are 5 fingers on a hand. How many fingers on %n hands?", v: 5 },
+            { t: "A beetle has 6 legs. How many legs do %n beetles have?", v: 6 },
+            { t: "A triangle has 3 sides. How many sides do %n triangles have?", v: 3 },
+            { t: "A cat has 9 lives. How many lives do %n cats have?", v: 9 }
+        ];
+
+        function generateQuestion() {
+            if (state.level === 4) {
+                // Word Problems
+                const template = wordProblems[Math.floor(Math.random() * wordProblems.length)];
+                const n = rRange(2, 9);
+                const correct = template.v * n;
+                const text = template.t.replace('%n', n);
+                
+                let answers = new Set([correct]);
+                while(answers.size < 4) {
+                    let w = correct + rRange(-10, 10);
+                    if(w<=0 || w===correct) w+=5;
+                    answers.add(w);
+                }
+                return { text: text, correct: correct, answers: Array.from(answers).sort(()=>Math.random()-0.5) };
+            }
+
+            // Normal Math
+            let a, b;
+            if (state.score < 10) { a=rRange(1,5); b=rRange(1,5); }
+            else if (state.score < 20) { a=rRange(6,9); b=rRange(6,9); }
+            else { a=rRange(1,9); b=rRange(10,12); }
+            
+            const correct = a * b;
+            let answers = new Set([correct]);
+            while(answers.size < 4) {
+                let w = correct + rRange(-10, 10);
+                if (w<=0 || w===correct) w+=5;
+                answers.add(w);
+            }
+            return { text: `${a} x ${b} = ?`, correct: correct, answers: Array.from(answers).sort(()=>Math.random()-0.5) };
+        }
+
+        function openQuestion(block) {
+            if (state.isLocked) document.exitPointerLock();
+            state.targetBlock = block;
+            state.currentQuestion = generateQuestion();
+            
+            const modal = document.getElementById('modal-overlay');
+            const qTitle = document.getElementById('q-title');
+            
+            if(state.level === 4) {
+                qTitle.textContent = "Demon's Riddle";
+                qTitle.style.color = "#dc2626";
+            } else {
+                qTitle.textContent = "Solve This!";
+                qTitle.style.color = "#1f2937";
+            }
+
+            document.getElementById('question-text').textContent = state.currentQuestion.text;
+            document.getElementById('feedback').textContent = "";
+            const grid = document.getElementById('answers-grid');
+            grid.innerHTML = '';
+
+            state.currentQuestion.answers.forEach(ans => {
+                const btn = document.createElement('button');
+                btn.className = 'mc-btn text-3xl py-4 font-bold';
+                btn.textContent = ans;
+                btn.onclick = () => checkAnswer(ans);
+                btn.ontouchend = (e) => { e.preventDefault(); checkAnswer(ans); };
+                grid.appendChild(btn);
+            });
+            modal.style.display = 'flex';
+        }
+
+        function checkAnswer(ans) {
+            const fb = document.getElementById('feedback');
+            if (ans === state.currentQuestion.correct) {
+                fb.style.color = "#16a34a"; fb.textContent = "CORRECT!";
+                playSound('correct');
+                
+                // Score updates
+                if (state.level === 4) {
+                    state.bossDamage++;
+                    updateBossHealth();
+                } else {
+                    state.score++;
+                    document.getElementById('score-display').textContent = state.score;
+                }
+
+                // Destroy block
+                scene.remove(state.targetBlock);
+                interactables.splice(interactables.indexOf(state.targetBlock), 1);
+                createParticles(state.targetBlock.position);
+
+                setTimeout(() => {
+                    document.getElementById('modal-overlay').style.display = 'none';
+                    checkProgression();
+                }, 1000);
+            } else {
+                fb.style.color = "#dc2626"; fb.textContent = "TRY AGAIN!";
+                playSound('wrong');
+            }
+        }
+
+        function updateBossHealth() {
+            const pct = 100 - ((state.bossDamage / config.bossMaxHealth) * 100);
+            document.getElementById('boss-health-fill').style.width = pct + "%";
+        }
+
+        function checkProgression() {
+            // Victory
+            if (state.level === 4 && state.bossDamage >= config.bossMaxHealth) {
+                // Destroy Boss visual
+                if(bossGroup) scene.remove(bossGroup);
+                createBigExplosion(new THREE.Vector3(0, 10, -10));
+                setTimeout(() => {
+                    document.getElementById('boss-ui').style.display = 'none';
+                    document.getElementById('victory-overlay').style.display = 'flex';
+                    if(state.isLocked) document.exitPointerLock();
+                }, 1500);
+                return;
+            }
+
+            // Normal Transitions (1->2, 2->3, 3->4)
+            let nextLevel = state.level;
+            if (state.score >= 10 && state.level === 1) nextLevel = 2;
+            else if (state.score >= 20 && state.level === 2) nextLevel = 3;
+            else if (state.score >= 30 && state.level === 3) nextLevel = 4;
+
+            if (nextLevel > state.level) {
+                state.level = nextLevel;
+                const overlay = document.getElementById('level-overlay');
+                let txt = "Advancing...";
+                if(nextLevel === 2) txt = "Entering The Caves...";
+                if(nextLevel === 3) txt = "Approaching The Castle...";
+                if(nextLevel === 4) txt = "ENTERING DEMON REALM...";
+                
+                document.getElementById('level-transition-text').textContent = txt;
+                overlay.style.display = 'flex';
+                
+                setTimeout(() => {
+                    generateLevel(state.level);
+                    overlay.style.display = 'none';
+                    if(!state.isMobile && state.level !== 4) document.body.requestPointerLock(); 
+                    // Level 4 shows its own intro, so we wait for user to click FIGHT
+                }, 2500);
+            } else {
+                if(!state.isMobile) document.body.requestPointerLock();
+            }
+        }
+
+        // --- 6. Visuals & Audio ---
+        function createParticles(pos) {
+            const geo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+            const col = state.level===4 ? 0xff0000 : 0xffff00;
+            const mat = new THREE.MeshBasicMaterial({color: col});
+            for(let i=0; i<8; i++) {
+                const p = new THREE.Mesh(geo, mat);
+                p.position.copy(pos);
+                p.position.add(new THREE.Vector3((Math.random()-.5), (Math.random()-.5), (Math.random()-.5)));
+                scene.add(p);
+                const vel = new THREE.Vector3((Math.random()-.5)*0.2, Math.random()*0.2, (Math.random()-.5)*0.2);
+                const anim = () => {
+                    p.position.add(vel); vel.y-=0.01; p.scale.multiplyScalar(0.9);
+                    if(p.scale.x > 0.01) requestAnimationFrame(anim); else scene.remove(p);
+                };
+                anim();
+            }
+        }
+
+        function createBigExplosion(pos) {
+            const geo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+            const mat = new THREE.MeshBasicMaterial({color: 0xff4400});
+            for(let i=0; i<30; i++) {
+                const p = new THREE.Mesh(geo, mat);
+                p.position.copy(pos);
+                scene.add(p);
+                const vel = new THREE.Vector3((Math.random()-.5), (Math.random()-.5), (Math.random()-.5));
+                const anim = () => {
+                    p.position.add(vel); p.scale.multiplyScalar(0.95);
+                    if(p.scale.x > 0.05) requestAnimationFrame(anim); else scene.remove(p);
+                };
+                anim();
+            }
+        }
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+            if(type === 'correct') {
+                osc.type='square'; osc.frequency.setValueAtTime(523, now); osc.frequency.setValueAtTime(659, now+0.1);
+                gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.4);
+                osc.start(); osc.stop(now+0.4);
+            } else {
+                osc.type='sawtooth'; osc.frequency.setValueAtTime(150, now); osc.frequency.linearRampToValueAtTime(100, now+0.3);
+                gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.3);
+                osc.start(); osc.stop(now+0.3);
+            }
+        }
+
+        // --- 7. Inputs & Loop ---
+        const controls = new THREE.Object3D(); scene.add(controls);
+        const pitchObj = new THREE.Object3D(); pitchObj.position.y = 1.6; controls.add(pitchObj); pitchObj.add(camera);
+        const hand = new THREE.Group(); pitchObj.add(hand);
+        hand.position.set(0.5, -0.4, -0.8); hand.rotation.set(0, -0.2, 0);
+        hand.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.6, 0.1), new THREE.MeshLambertMaterial({map: textures.wood})));
+        const pickHead = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 0.1), new THREE.MeshLambertMaterial({color:0x888888}));
+        pickHead.position.y = 0.3; hand.add(pickHead);
+
+        // Inputs
+        const onKey = (code, down) => {
+            if(code==='KeyW'||code==='ArrowUp') state.moveForward=down;
+            if(code==='KeyS'||code==='ArrowDown') state.moveBackward=down;
+            if(code==='KeyA'||code==='ArrowLeft') state.moveLeft=down;
+            if(code==='KeyD'||code==='ArrowRight') state.moveRight=down;
+            if(down && code==='Space') doJump();
+        };
+        document.addEventListener('keydown', e=>onKey(e.code, true));
+        document.addEventListener('keyup', e=>onKey(e.code, false));
+        document.body.addEventListener('mousemove', e=>{
+            if(!state.isLocked) return;
+            controls.rotation.y -= e.movementX * 0.002;
+            pitchObj.rotation.x -= e.movementY * 0.002;
+            pitchObj.rotation.x = Math.max(-1.5, Math.min(1.5, pitchObj.rotation.x));
+        });
+        document.body.addEventListener('mousedown', e=>{
+            if(state.isMobile) return;
+            if(!state.isLocked && state.isGameActive && document.getElementById('modal-overlay').style.display !== 'flex' && document.getElementById('boss-intro-overlay').style.display !== 'flex') {
+                document.body.requestPointerLock();
+                return;
+            }
+            if(state.isLocked && e.button===0) tryMine();
+        });
+        document.addEventListener('pointerlockchange', () => state.isLocked = document.pointerLockElement === document.body);
+
+        // Mobile
+        const touchState = { rightId:null, lastX:0, lastY:0 };
+        function bindBtn(id, prop) {
+            const el = document.getElementById(id);
+            el.addEventListener('touchstart', (e)=>{e.preventDefault(); state[prop]=true; el.classList.add('active');});
+            el.addEventListener('touchend', (e)=>{e.preventDefault(); state[prop]=false; el.classList.remove('active');});
+        }
+        bindBtn('btn-up','moveForward'); bindBtn('btn-down','moveBackward');
+        bindBtn('btn-left','moveLeft'); bindBtn('btn-right','moveRight');
+        document.getElementById('btn-jump').addEventListener('touchstart', e=>{e.preventDefault(); doJump();});
+        document.getElementById('btn-mine').addEventListener('touchstart', e=>{e.preventDefault(); tryMine();});
+
+        document.addEventListener('touchstart', e => {
+            if(!state.isGameActive || document.getElementById('modal-overlay').style.display==='flex' || document.getElementById('boss-intro-overlay').style.display==='flex') return;
+            if(e.target.closest('button') || e.target.closest('.dpad-btn')) return;
+            state.isMobile = true; document.getElementById('mobile-controls').style.display = 'block';
+            for(let i=0; i<e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if(t.clientX > window.innerWidth/2 && touchState.rightId===null) {
+                    touchState.rightId = t.identifier; touchState.lastX = t.clientX; touchState.lastY = t.clientY;
+                }
+            }
+        }, {passive:false});
+        document.addEventListener('touchmove', e => {
+            if(!state.isGameActive) return; e.preventDefault();
+            for(let i=0; i<e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if(t.identifier === touchState.rightId) {
+                    controls.rotation.y -= (t.clientX - touchState.lastX) * 0.005;
+                    pitchObj.rotation.x -= (t.clientY - touchState.lastY) * 0.005;
+                    pitchObj.rotation.x = Math.max(-1.5, Math.min(1.5, pitchObj.rotation.x));
+                    touchState.lastX = t.clientX; touchState.lastY = t.clientY;
+                }
+            }
+        }, {passive:false});
+        document.addEventListener('touchend', e => {
+            for(let i=0; i<e.changedTouches.length; i++) if(e.changedTouches[i].identifier === touchState.rightId) touchState.rightId=null;
+        });
+
+        // Loop
+        function doJump() { if(state.canJump) { state.velocity.y += config.jumpForce; state.canJump=false; } }
+        const raycaster = new THREE.Raycaster();
+        function tryMine() {
+            hand.rotation.z = -0.5; setTimeout(()=>hand.rotation.z=0, 150);
+            raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
+            const hits = raycaster.intersectObjects(interactables);
+            if(hits.length>0 && hits[0].distance < 5) {
+                const b = hits[0].object;
+                if(b.userData.active) openQuestion(b);
+            }
+        }
+
+        let prevTime = performance.now();
+        function animate() {
+            requestAnimationFrame(animate);
+            if(state.isGameActive && (state.isLocked || state.isMobile) && document.getElementById('level-overlay').style.display !== 'flex') {
+                const delta = (performance.now() - prevTime) / 1000;
+                
+                state.velocity.x -= state.velocity.x * 10.0 * delta;
+                state.velocity.z -= state.velocity.z * 10.0 * delta;
+                state.velocity.y -= config.gravity * delta;
+                state.direction.z = Number(state.moveForward) - Number(state.moveBackward);
+                state.direction.x = Number(state.moveRight) - Number(state.moveLeft);
+                state.direction.normalize();
+                if (state.moveForward || state.moveBackward) state.velocity.z -= state.direction.z * 400.0 * delta;
+                if (state.moveLeft || state.moveRight) state.velocity.x -= state.direction.x * 400.0 * delta;
+                controls.translateX(state.velocity.x * delta);
+                controls.translateZ(state.velocity.z * delta);
+                controls.position.y += state.velocity.y * delta;
+                if (controls.position.y < 1.6) { state.velocity.y = 0; controls.position.y = 1.6; state.canJump = true; }
+                if(state.moveForward||state.moveBackward||state.moveLeft||state.moveRight) hand.position.y = -0.4 + Math.sin(performance.now()*0.015)*0.05;
+            }
+            prevTime = performance.now();
+            interactables.forEach(b => {
+                b.rotation.y += 0.02; b.position.y = b.userData.originalY + Math.sin(performance.now()*0.003)*0.1;
+            });
+            renderer.render(scene, camera);
+        }
+
+        // Init
+        document.getElementById('start-btn').addEventListener('click', () => {
+            document.getElementById('start-screen').style.display = 'none';
+            state.isGameActive = true;
+            generateLevel(1);
+            if('ontouchstart' in window) { state.isMobile = true; document.getElementById('mobile-controls').style.display = 'block'; }
+            else document.body.requestPointerLock();
+            animate();
+        });
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+
+    </script>
+</body>
+</html>
+
+
