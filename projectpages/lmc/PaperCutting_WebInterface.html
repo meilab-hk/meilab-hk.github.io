@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Paper Cutting</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            background-color: #f5f5f5;
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        .canvas-container, .preview-container {
+            flex: 1;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .preview-container {
+            background: #d40000;
+        }
+
+        canvas {
+            border: 2px solid #333;
+            background: white;
+        }
+
+        .tools {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .tool-group {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            background: #1a1a1a;
+            color: white;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #333;
+        }
+
+        button.active {
+            background: #d40000;
+        }
+
+        .size-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #brushSize {
+            width: 100px;
+        }
+
+        h2 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .preview-container h2 {
+            color: white;
+        }
+        .right-lines {
+            position: absolute;
+            right: 350px;           /* 调整右侧位置 */
+            top: 246px;            /* 调整顶部位置 */
+            width: 20px;          /* 调整容器宽度 */
+        }
+
+        .line1 {
+            height: 3px;           /* 调整线条高度/粗细 */
+            background-color: pink; /* 调整线条颜色 */
+            margin: 40px 0;        /* 调整上下间距 */
+            border: none;          /* 移除默认边框 */
+        }
+
+        .line2 {
+            height: 3px;           /* 调整线条高度/粗细 */
+            background-color: black; /* 调整线条颜色 */
+            margin: 0px 0px;        /* 调整上下间距 */
+            border: none;          /* 移除默认边框 */
+        }
+    </style>
+</head>
+<body>
+    <!--
+    <div class="right-lines">
+        <hr class="line1">
+        <hr class="line2">
+    </div>
+        -->
+    <div class="container">
+        <div class="canvas-container">
+            <h2>Design area</h2>
+            <div class="tools">
+                <div class="tool-group">
+                    <span>Number of fold</span>
+                    <button data-folds="3" class="fold-btn">3 folds</button>
+                    <button data-folds="4" class="fold-btn active">4 folds</button>
+                    <button data-folds="6" class="fold-btn">6 folds</button>
+                </div>
+                <!-- 在工具组中添加 -->
+                <div class="tool-group">
+                    <span>tools:</span>
+                    <button id="freehandBtn" class="tool-btn active">Line</button>
+                    <button id="lineBtn" class="tool-btn">Fill area</button>
+                    <!--<button id="curveBtn" class="tool-btn">曲线</button> -->
+                    <!--<button id="eraserBtn" class="tool-btn">橡皮擦</button> -->
+                </div>
+
+                <div class="tool-group">
+                    <button id="clearBtn">Erase</button>
+                    <div class="size-control">
+                        <label for="brushSize">width:</label>
+                        <input type="range" id="brushSize" min="1" max="20" value="5">
+                    </div>
+                </div>
+            </div>
+            <canvas id="drawingCanvas" width="400" height="400"></canvas>
+        </div>
+        <div class="preview-container">
+            <h2>Cutting preview</h2>
+            <canvas id="previewCanvas" width="400" height="400"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const drawingCanvas = document.getElementById('drawingCanvas');
+        const previewCanvas = document.getElementById('previewCanvas');
+        const clearBtn = document.getElementById('clearBtn');
+        const brushSizeInput = document.getElementById('brushSize');
+        const foldBtns = document.querySelectorAll('.fold-btn');
+        const toolBtns = document.querySelectorAll('.tool-btn');
+        
+        const drawingCtx = drawingCanvas.getContext('2d');
+        const previewCtx = previewCanvas.getContext('2d');
+
+        let isDrawing = false;
+        let currentFolds = 4;
+        let currentTool = 'freehand';
+        let startX, startY, lastX, lastY;
+        let curvePoints = [];
+        let dragMode = null; // 'body', 'leftWire', 'rightWire', 'rotate'
+        //let eraserSize = 20; // 橡皮擦大小
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = drawingCanvas.width;
+        tempCanvas.height = drawingCanvas.height;
+        const tempCtx = tempCanvas.getContext('2d');
+
+        class LED {    
+            constructor(id, x, y, color, rotation = 0) {
+                this.id = id;
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.rotation = rotation;
+                this.leftWireLength = 30;
+                this.rightWireLength = 30;
+                this.leftWireAngle = Math.PI; // 左引脚角度，默认向左
+                this.rightWireAngle = 0;      // 右引脚角度，默认向右
+                this.selected = false;
+            }
+
+            hitTest(x, y) {
+                const dx = x - this.x;
+                const dy = y - this.y;
+                
+                // 反转整体旋转以获得局部坐标
+                const cos = Math.cos(-this.rotation);
+                const sin = Math.sin(-this.rotation);
+                const localX = dx * cos - dy * sin;
+                const localY = dx * sin + dy * cos;
+
+                // 检查主体
+                if (Math.sqrt(localX * localX + localY * localY) < 10) {
+                    return 'body';
+                }
+
+                // 计算左引脚端点位置（考虑引脚自身角度）
+                const leftX = this.leftWireLength * Math.cos(this.leftWireAngle);
+                const leftY = this.leftWireLength * Math.sin(this.leftWireAngle);
+                const leftDx = localX - leftX;
+                const leftDy = localY - leftY;
+                if (Math.sqrt(leftDx * leftDx + leftDy * leftDy) < 10) {
+                    return 'leftWire';
+                }
+
+                // 计算右引脚端点位置
+                const rightX = this.rightWireLength * Math.cos(this.rightWireAngle);
+                const rightY = this.rightWireLength * Math.sin(this.rightWireAngle);
+                const rightDx = localX - rightX;
+                const rightDy = localY - rightY;
+                if (Math.sqrt(rightDx * rightDx + rightDy * rightDy) < 10) {
+                    return 'rightWire';
+                }
+
+                // 旋转控制点
+                const rotateX = localX;
+                const rotateY = localY + 20;
+                if (Math.sqrt(rotateX * rotateX + rotateY * rotateY) < 10) {
+                    return 'rotate';
+                }
+
+                // 左引脚旋转控制点
+                const leftRotateX = leftX * 0.5;
+                const leftRotateY = leftY * 0.5;
+                const leftRotateDx = localX - leftRotateX;
+                const leftRotateDy = localY - leftRotateY;
+                if (Math.sqrt(leftRotateDx * leftRotateDx + leftRotateDy * leftRotateDy) < 10) {
+                    return 'leftRotate';
+                }
+
+                // 右引脚旋转控制点
+                const rightRotateX = rightX * 0.5;
+                const rightRotateY = rightY * 0.5;
+                const rightRotateDx = localX - rightRotateX;
+                const rightRotateDy = localY - rightRotateY;
+                if (Math.sqrt(rightRotateDx * rightRotateDx + rightRotateDy * rightRotateDy) < 10) {
+                    return 'rightRotate';
+                }
+
+                return null;
+            }
+        }
+        // 添加LED控制面板
+        function createLEDControls() {
+            const controlPanel = document.createElement('div');
+            controlPanel.className = 'led-controls';
+            controlPanel.innerHTML = `
+                <div class="led-palette">
+                    <h3>add LED/Roller line</h3>
+                    <div class="color-buttons">
+                        <button class="led-btn" data-color="red">red</button>
+                        <button class="led-btn" data-color="blue">blue</button>
+                        <button class="led-btn" data-color="green">green</button>
+                        <button class="led-btn" data-color="yellow">yellow</button>
+                        <button class="led-btn roller-btn" data-color="roller line">roller</button>
+                    </div>
+                </div>
+                <div class="led-list">
+                    <h3>LED list</h3>
+                    <ul id="led-items"></ul>
+                </div>
+            `;
+            document.body.appendChild(controlPanel);
+        }
+
+        // 修改预览画布处理
+        let leds = [];
+        let selectedLED = null;
+        let isDragging = false;
+        let isAdjustingWire = false;
+        let isRotating = false;
+        let dragStartX, dragStartY;
+
+
+
+        function drawGuideLines() {
+            const centerX = drawingCanvas.width / 2;
+            const centerY = drawingCanvas.height / 2;
+            const radius = Math.min(centerX, centerY) - 10;
+            const innerRadius = radius * 0.27;
+            const outerRadius = radius * 0.82;
+
+            drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+            
+            // 绘制阴影区域
+            drawingCtx.beginPath();
+            drawingCtx.moveTo(centerX, centerY);
+            drawingCtx.arc(centerX, centerY, outerRadius, -Math.PI / 2, -Math.PI / 2 + (Math.PI / currentFolds));
+            drawingCtx.lineTo(centerX, centerY);
+            drawingCtx.closePath();
+            drawingCtx.fillStyle = 'rgba(200, 200, 200, 0.2)';
+            drawingCtx.fill();
+
+            // 绘制内圆区域
+            drawingCtx.beginPath();
+            drawingCtx.moveTo(centerX, centerY);
+            drawingCtx.arc(centerX, centerY, innerRadius, -Math.PI / 2, -Math.PI / 2 + (Math.PI / currentFolds));
+            drawingCtx.lineTo(centerX, centerY);
+            drawingCtx.closePath();
+            drawingCtx.fillStyle = 'white';
+            drawingCtx.fill();
+
+            // 绘制扇形边界
+            drawingCtx.beginPath();
+            drawingCtx.moveTo(centerX, centerY);
+            drawingCtx.arc(centerX, centerY, radius, -Math.PI / 2, -Math.PI / 2 + (Math.PI / currentFolds));
+            drawingCtx.lineTo(centerX, centerY);
+            drawingCtx.strokeStyle = '#ccc';
+            drawingCtx.stroke();
+
+            // 绘制参考线
+            drawingCtx.setLineDash([5, 5]);
+            drawingCtx.beginPath();
+            drawingCtx.moveTo(centerX, centerY);
+            drawingCtx.lineTo(centerX, centerY - radius);
+            drawingCtx.stroke();
+            drawingCtx.setLineDash([]);
+            
+            drawingCtx.strokeStyle = '#000';
+
+            // 内圆区域
+            drawingCtx.beginPath();
+            drawingCtx.moveTo(centerX, centerY);
+            drawingCtx.arc(centerX, centerY, innerRadius, -Math.PI / 2, -Math.PI / 2 + (Math.PI / currentFolds));
+            drawingCtx.lineTo(centerX, centerY);
+            drawingCtx.closePath();
+            drawingCtx.fillStyle = 'white';  // 改为红色-> 保持白色
+            drawingCtx.fill();
+        }
+
+        function isInsideSector(x, y) {
+            const centerX = drawingCanvas.width / 2;
+            const centerY = drawingCanvas.height / 2;
+            const radius = Math.min(centerX, centerY) - 10;
+
+            const angle = Math.atan2(y - centerY, x - centerX) + Math.PI / 2;
+            const normalizedAngle = angle < 0 ? angle + 2 * Math.PI : angle;
+            const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+
+            return distance <= radius && normalizedAngle <= (Math.PI / currentFolds);
+        }
+
+        function drawLine(start, end) {
+            drawingCtx.beginPath();
+            drawingCtx.lineWidth = brushSizeInput.value;
+            drawingCtx.moveTo(start.x, start.y);
+            drawingCtx.lineTo(end.x, end.y);
+            drawingCtx.stroke();
+        }
+
+        function drawCurve(points) {
+            if (points.length < 2) return;
+            
+            drawingCtx.beginPath();
+            drawingCtx.lineWidth = brushSizeInput.value;
+            drawingCtx.moveTo(points[0].x, points[0].y);
+            
+            for (let i = 1; i < points.length - 2; i++) {
+                const xc = (points[i].x + points[i + 1].x) / 2;
+                const yc = (points[i].y + points[i + 1].y) / 2;
+                drawingCtx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+            }
+            
+            if (points.length > 2) {
+                const last = points.length - 1;
+                drawingCtx.quadraticCurveTo(
+                    points[last - 1].x, points[last - 1].y,
+                    points[last].x, points[last].y
+                );
+            }
+            
+            drawingCtx.stroke();
+        }
+
+        function mirrorPattern(ctx, sourceCanvas, angle) {
+            const centerX = sourceCanvas.width / 2;
+            const centerY = sourceCanvas.height / 2;
+            
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate(angle);
+            
+            ctx.drawImage(sourceCanvas, -centerX, -centerY);
+            ctx.scale(-1, 1);
+            ctx.drawImage(sourceCanvas, -centerX, -centerY);
+            
+            ctx.restore();
+        }
+
+        /*function updatePreview() {
+            
+            const centerX = previewCanvas.width / 2;
+            const centerY = previewCanvas.height / 2;
+
+            previewCtx.fillStyle = '#d40000';
+            previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+
+            tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+            for (let i = 0; i < currentFolds; i++) {
+                const angle = (i * Math.PI) / (currentFolds/2);
+                mirrorPattern(previewCtx, drawingCanvas, angle);
+            }
+
+            previewCtx.globalCompositeOperation = 'destination-out';
+            
+            for (let i = 0; i < currentFolds; i++) {
+                const angle = (i * Math.PI) / (currentFolds/2);
+                mirrorPattern(previewCtx, drawingCanvas, angle);
+            }
+            
+            previewCtx.globalCompositeOperation = 'source-over';
+        }
+*/
+
+        function updatePreview() {
+            const centerX = previewCanvas.width / 2;
+            const centerY = previewCanvas.height / 2;
+            const radius = Math.min(centerX, centerY) - 10;
+            const innerRadius = radius * 0.27; // 内圆半径
+
+            // 先填充整个画布为红色
+            previewCtx.fillStyle = '#d40000';
+            previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+
+            // 复制原始图案
+            for (let i = 0; i < currentFolds; i++) {
+                const angle = (i * Math.PI) / (currentFolds/2);
+                mirrorPattern(previewCtx, drawingCanvas, angle);
+            }
+
+            // 创建剪切遮罩
+            previewCtx.globalCompositeOperation = 'destination-out';
+            for (let i = 0; i < currentFolds; i++) {
+                const angle = (i * Math.PI) / (currentFolds/2);
+                mirrorPattern(previewCtx, drawingCanvas, angle);
+            }
+            
+            // 将剪切区域填充为白色，但不包括内圆区域
+            previewCtx.globalCompositeOperation = 'destination-over';
+            previewCtx.fillStyle = 'white';
+            previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+            
+            // 恢复原始设置
+            previewCtx.globalCompositeOperation = 'source-over';
+            
+            // 重新绘制所有内圆为红色
+            
+            for (let i = 0; i < currentFolds * 2; i++) {
+                const angle = (i * Math.PI) / currentFolds;
+                previewCtx.save();
+                previewCtx.beginPath();
+                previewCtx.translate(centerX, centerY);
+                previewCtx.rotate(angle);
+                previewCtx.arc(0, 0, innerRadius, 0, Math.PI / currentFolds);
+                previewCtx.lineTo(0, 0);
+                previewCtx.fillStyle = '#d40000';
+                previewCtx.fill();
+                previewCtx.restore();
+            }
+            
+
+            // 绘制参考线
+            drawPreviewGuideLines();
+
+            // 绘制所有LED
+            leds.forEach(led => drawLED(led));
+        }
+
+        // 修改LED绘制函数
+       // 修改 drawLED 函数
+        function drawLED(led) {
+            previewCtx.save();
+            previewCtx.translate(led.x, led.y);
+            previewCtx.rotate(led.rotation);
+
+                // 确定引脚颜色
+            let positiveWireColor = '#ffb8b8'; // 默认正极为淡红色
+            let negativeWireColor = '#a5d8ff'; // 默认负极为淡蓝色
+
+            // 如果是roller类型，引脚颜色都改为白色
+            if (led.color == 'roller line') {
+                positiveWireColor = '#69f0ae';
+                negativeWireColor = '#69f0ae';
+            }
+
+            // 绘制正极引脚（红色）
+            previewCtx.beginPath();
+            previewCtx.moveTo(0, 0);
+            const leftEndX = led.leftWireLength * Math.cos(led.leftWireAngle);
+            const leftEndY = led.leftWireLength * Math.sin(led.leftWireAngle);
+            previewCtx.lineTo(leftEndX, leftEndY);
+            previewCtx.strokeStyle = positiveWireColor; // 淡红色表示正极
+            previewCtx.lineWidth = 2.5;
+            previewCtx.stroke();
+
+            // 绘制负极引脚（蓝色）
+            previewCtx.beginPath();
+            previewCtx.moveTo(0, 0);
+            const rightEndX = led.rightWireLength * Math.cos(led.rightWireAngle);
+            const rightEndY = led.rightWireLength * Math.sin(led.rightWireAngle);
+            previewCtx.lineTo(rightEndX, rightEndY);
+            previewCtx.strokeStyle = negativeWireColor; // 淡蓝色表示负极
+            previewCtx.lineWidth = 2.5;
+            previewCtx.stroke();
+
+            // 绘制LED主体
+            previewCtx.beginPath();
+            previewCtx.arc(0, 0, 5, 0, Math.PI * 2);
+            if (led.color == 'roller line') {
+                previewCtx.arc(0, 1, 1, 0, Math.PI * 2);;
+            }
+            previewCtx.fillStyle = led.color;
+            if (led.color == 'roller line') {
+                previewCtx.fillStyle = '#69f0ae';
+            }
+            previewCtx.fill();
+            previewCtx.strokeStyle = '#ffffff';
+            if (led.color == 'roller line') {
+                previewCtx.strokeStyle = '#69f0ae';
+            }
+            previewCtx.stroke();
+
+            // 如果被选中，绘制控制点
+            if (led.selected) {
+                // 正极引脚端点控制点（红色边框）
+                drawControlPoint(leftEndX, leftEndY, '#fff', positiveWireColor);
+                // 负极引脚端点控制点（蓝色边框）
+                drawControlPoint(rightEndX, rightEndY, '#fff', negativeWireColor);
+                
+                // 引脚旋转控制点
+                //drawControlPoint(leftEndX * 0.5, leftEndY * 0.5, '#fff');
+                //drawControlPoint(rightEndX * 0.5, rightEndY * 0.5, '#fff');
+                
+                // LED旋转控制点
+                // previewCtx.beginPath();
+                // previewCtx.moveTo(0, 0);
+                // previewCtx.lineTo(0, 20);
+                // previewCtx.strokeStyle = '#fff';
+                // previewCtx.stroke();
+                // drawControlPoint(0, 20, '#fff');
+            }
+
+            previewCtx.restore();
+        }
+
+        // 修改 drawControlPoint 函数以支持自定义边框颜色
+        function drawControlPoint(x, y, fillColor, strokeColor = '#000') {
+            previewCtx.beginPath();
+            previewCtx.arc(x, y, 5, 0, Math.PI * 2);
+            previewCtx.fillStyle = fillColor;
+            previewCtx.strokeStyle = strokeColor;
+            previewCtx.fill();
+            previewCtx.stroke();
+        }
+
+
+        function drawRotationHandle(x, y) {
+            previewCtx.beginPath();
+            previewCtx.moveTo(x, y);
+            previewCtx.lineTo(x, y - 10);
+            previewCtx.arc(x, y - 15, 5, 0, Math.PI * 2);
+            previewCtx.strokeStyle = '#000';
+            previewCtx.stroke();
+        }
+        
+        function startDrawing(e) {
+            const rect = drawingCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            if (!isInsideSector(x, y)) return;
+
+            isDrawing = true;
+            [startX, startY] = [x, y];
+            [lastX, lastY] = [x, y];
+
+            if (currentTool === 'curve') {
+                curvePoints = [{x, y}];
+            }
+        }
+        
+        function draw(e) {
+            if (!isDrawing) return;
+
+            const rect = drawingCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            if (!isInsideSector(x, y)) {
+                isDrawing = false;
+                return;
+            }
+
+            switch(currentTool) {
+                case 'freehand':
+                    drawingCtx.beginPath();
+                    drawingCtx.lineWidth = brushSizeInput.value;
+                    drawingCtx.moveTo(lastX, lastY);
+                    drawingCtx.lineTo(x, y);
+                    drawingCtx.stroke();
+                    [lastX, lastY] = [x, y];
+                    break;
+                case 'line':
+                    const tmpCanvas = drawingCtx.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height);
+                    drawGuideLines();
+                    drawingCtx.putImageData(tmpCanvas, 0, 0);
+                    drawLine({x: startX, y: startY}, {x, y});
+                    break;
+                case 'curve':
+                    curvePoints.push({x, y});
+                    const tmpCanvas2 = drawingCtx.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height);
+                    drawGuideLines();
+                    drawingCtx.putImageData(tmpCanvas2, 0, 0);
+                    drawCurve(curvePoints);
+                    break;
+            }
+
+            updatePreview();
+        } 
+                
+        function stopDrawing() {
+            if (!isDrawing) return;
+            isDrawing = false;
+            
+            if (currentTool === 'curve') {
+                drawCurve(curvePoints);
+                curvePoints = [];
+            }
+            
+            updatePreview();
+        }
+
+        function drawPreviewGuideLines() {
+            const centerX = previewCanvas.width / 2;
+            const centerY = previewCanvas.height / 2;
+            const radius = Math.min(centerX, centerY) - 10;
+            
+            previewCtx.save();
+            previewCtx.strokeStyle = 'rgba(255,255,255,0.5)';
+            previewCtx.setLineDash([5, 5]);
+            
+            for (let i = 0; i < currentFolds * 2; i++) {
+                const angle = (i * Math.PI) / currentFolds;
+                previewCtx.beginPath();
+                previewCtx.moveTo(centerX, centerY);
+                previewCtx.lineTo(
+                    centerX + Math.sin(angle) * radius,
+                    centerY - Math.cos(angle) * radius
+                );
+                previewCtx.stroke();
+            }
+            
+            previewCtx.restore();
+        }
+
+        // 直线工具：增加预览效果
+        function previewLine(start, end) {
+            const tmpCanvas = drawingCtx.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height);
+            drawGuideLines();
+            drawingCtx.putImageData(tmpCanvas, 0, 0);
+            drawLine(start, end);
+        }
+
+        // 曲线工具：使用贝塞尔曲线，增加控制点显示
+        function drawCurve(points) {
+            if (points.length < 2) return;
+            
+            drawingCtx.beginPath();
+            drawingCtx.moveTo(points[0].x, points[0].y);
+            
+            if (points.length === 2) {
+                drawingCtx.lineTo(points[1].x, points[1].y);
+            } else {
+                for (let i = 0; i < points.length - 1; i++) {
+                    const xc = (points[i].x + points[i + 1].x) / 2;
+                    const yc = (points[i].y + points[i + 1].y) / 2;
+                    drawingCtx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+                }
+            }
+            
+            drawingCtx.stroke();
+            
+            // 显示控制点
+            points.forEach(point => {
+                drawingCtx.beginPath();
+                drawingCtx.arc(point.x, point.y, 3, 0, Math.PI * 2);
+                drawingCtx.fillStyle = 'blue';
+                drawingCtx.fill();
+            });
+        }
+        
+        
+        // 事件监听
+        
+        toolBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                toolBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentTool = btn.id.replace('Btn', '');
+            });
+        });
+
+        foldBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentFolds = parseInt(btn.dataset.folds);
+                foldBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                drawGuideLines();
+                updatePreview();
+            });
+        });
+
+        clearBtn.addEventListener('click', () => {
+            drawGuideLines();
+            updatePreview();
+        });
+        
+        drawingCanvas.addEventListener('mousedown', startDrawing);
+        drawingCanvas.addEventListener('mousemove', draw);
+        drawingCanvas.addEventListener('mouseup', stopDrawing);
+        drawingCanvas.addEventListener('mouseout', stopDrawing);
+
+        // 修改鼠标按下事件处理
+        previewCanvas.addEventListener('mousedown', (e) => {
+            const rect = previewCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            // 重置所有LED的选中状态
+            leds.forEach(led => {
+                led.selected = false;
+            });
+
+            // 从后向前检查（使最后添加的LED优先响应）
+            for (let i = leds.length - 1; i >= 0; i--) {
+                const led = leds[i];
+                const hitResult = led.hitTest(x, y);
+                
+                if (hitResult) {
+                    selectedLED = led;
+                    led.selected = true;
+                    dragMode = hitResult;
+                    dragStartX = x;
+                    dragStartY = y;
+                    break;
+                }
+            }
+
+            updatePreview();
+        });
+
+        // 修改鼠标移动事件处理
+        previewCanvas.addEventListener('mousemove', (e) => {
+            if (!selectedLED || !dragMode) return;
+
+            const rect = previewCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            // 计算相对于LED中心的位置
+            const dx = x - selectedLED.x;
+            const dy = y - selectedLED.y;
+            
+            // 转换到LED的局部坐标系
+            const cos = Math.cos(-selectedLED.rotation);
+            const sin = Math.sin(-selectedLED.rotation);
+            const localX = dx * cos - dy * sin;
+            const localY = dx * sin + dy * cos;
+
+            switch (dragMode) {
+                case 'body':
+                    selectedLED.x = x;
+                    selectedLED.y = y;
+                    break;
+                    
+                case 'leftWire':
+                case 'rightWire':
+                    // 更新引脚长度
+                    const length = Math.sqrt(localX * localX + localY * localY);
+                    if (dragMode === 'leftWire') {
+                        selectedLED.leftWireLength = length;
+                        selectedLED.leftWireAngle = Math.atan2(localY, localX);
+                    } else {
+                        selectedLED.rightWireLength = length;
+                        selectedLED.rightWireAngle = Math.atan2(localY, localX);
+                    }
+                    break;
+                    
+                case 'rotate':
+                    selectedLED.rotation = Math.atan2(dy, dx);
+                    break;
+
+                case 'leftRotate':
+                    selectedLED.leftWireAngle = Math.atan2(localY, localX);
+                    break;
+
+                case 'rightRotate':
+                    selectedLED.rightWireAngle = Math.atan2(localY, localX);
+                    break;
+            }
+
+            updatePreview();
+        });
+
+       
+        // 修改鼠标松开事件处理
+        previewCanvas.addEventListener('mouseup', () => {
+            dragMode = null;
+        });
+
+
+        // 添加样式
+        const style = document.createElement('style');
+        style.textContent = `
+            .led-controls {
+                position: fixed;
+                right: 20px;
+                top: 20px;
+                background: white;
+                padding: 15px;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            }
+
+            .led-btn {
+                padding: 8px 15px;
+                margin: 5px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: all 0.3s;
+            }
+
+            .led-btn:hover {
+                transform: scale(1.05);
+            }
+
+            .color-buttons {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+            }
+
+            .led-list {
+                margin-top: 20px;
+            }
+
+            #led-items {
+                max-height: 200px;
+                overflow-y: auto;
+            }
+            .roller-btn {
+                background-color: #00897b;
+                color: white;
+            }
+        `;
+        document.head.appendChild(style);
+
+        
+
+        // 初始化
+        drawGuideLines();
+        updatePreview();
+        createLEDControls();
+
+        // 添加新LED的处理
+        document.querySelectorAll('.led-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const color = btn.dataset.color;
+                const newLED = new LED(
+                    Date.now(),
+                    previewCanvas.width / 2,
+                    previewCanvas.height / 2,
+                    color
+                );
+                leds.push(newLED);
+                updatePreview();
+                updateLEDList();
+            });
+        });
+
+        function updateLEDList() {
+            const list = document.getElementById('led-items');
+                list.innerHTML = leds.map(led => `
+                <li>
+                    ${led.color}
+                    <button onclick="removeLED(${led.id})">delete</button>
+                </li>
+            `).join('');
+            
+        }
+
+        function removeLED(id) {
+            leds = leds.filter(led => led.id !== id);
+            updatePreview();
+            updateLEDList();
+        }
+        // 获取触摸坐标的函数
+        function getTouchPos(canvas, touchEvent) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: touchEvent.touches[0].clientX - rect.left,
+                y: touchEvent.touches[0].clientY - rect.top
+            };
+        }
+
+        // 设置触摸事件监听器 - 触摸开始
+        designCanvas.addEventListener('touchstart', function(e) {
+            e.preventDefault(); // 防止页面滚动等默认行为
+            
+            isDrawing = true;
+            const pos = getTouchPos(designCanvas, e);
+            lastX = pos.x;
+            lastY = pos.y;
+            
+            if (currentTool === 'lineDraw') {
+                lineStartX = pos.x;
+                lineStartY = pos.y;
+            } else if (currentTool === 'curveDraw') {
+                curvePoints = [pos]; // 开始新的曲线
+            }
+        }, { passive: false });
+
+        // 设置触摸事件监听器 - 触摸移动
+        designCanvas.addEventListener('touchmove', function(e) {
+            e.preventDefault(); // 防止页面滚动等默认行为
+            
+            if (!isDrawing) return;
+            
+            const pos = getTouchPos(designCanvas, e);
+            
+            if (currentTool === 'freeDraw') {
+                // 自由绘制工具的触摸实现
+                designCtx.beginPath();
+                designCtx.lineWidth = brushSize;
+                designCtx.lineCap = 'round';
+                designCtx.strokeStyle = '#000';
+                designCtx.moveTo(lastX, lastY);
+                designCtx.lineTo(pos.x, pos.y);
+                designCtx.stroke();
+                
+                lastX = pos.x;
+                lastY = pos.y;
+                
+                // 实时更新预览
+                updatePreview();
+            } else if (currentTool === 'lineDraw') {
+                // 直线工具的触摸实现 - 在移动时可以预览线条但不实际绘制
+                // 实际代码实现会根据原有代码匹配
+            } else if (currentTool === 'curveDraw') {
+                // 曲线工具的触摸实现
+                curvePoints.push(pos);
+                
+                // 清除临时绘制内容并绘制当前曲线
+                // 实际代码实现会根据原有代码匹配
+            }
+        }, { passive: false });
+
+        // 设置触摸事件监听器 - 触摸结束
+        designCanvas.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            
+            if (!isDrawing) return;
+            isDrawing = false;
+            
+            if (currentTool === 'lineDraw') {
+                // 完成直线绘制
+                const pos = getTouchPos(designCanvas, e);
+                designCtx.beginPath();
+                designCtx.lineWidth = brushSize;
+                designCtx.lineCap = 'round';
+                designCtx.strokeStyle = '#000';
+                designCtx.moveTo(lineStartX, lineStartY);
+                designCtx.lineTo(lastX, lastY); // 使用最后记录的触摸位置
+                designCtx.stroke();
+                
+                updatePreview();
+            } else if (currentTool === 'curveDraw') {
+                // 完成曲线绘制
+                // 实际代码实现会根据原有代码匹配
+            }
+        }, { passive: false });
+
+        // 添加触摸取消事件
+        designCanvas.addEventListener('touchcancel', function(e) {
+            e.preventDefault();
+            isDrawing = false;
+        }, { passive: false });
+        designCanvas.style.touchAction = 'none';
+    </script>
+</body>
+</html>

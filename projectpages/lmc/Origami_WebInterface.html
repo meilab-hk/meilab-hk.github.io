@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Origami</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            display: flex;
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+
+        /* 左侧区域 */
+        #left-section {
+            width: 80%;
+            background-color: #f0f0f0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #preview-container {
+            width: 100%;
+            max-width: 800px;
+            aspect-ratio: 1;
+            margin: 20px 0;
+            background-color: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        #preview-image {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        /* 修改右侧布局比例 */
+        #right-section {
+            width: 50%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #image-gallery {
+            flex: 2;
+            background-color: #ffffff;
+            border-bottom: 1px solid #ddd;
+            padding: 20px;
+        }
+
+        #upload-button {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #upload-button:hover {
+            background-color: #45a049;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        /* 修改图片库网格样式 */
+        #gallery-grid {
+            margin-top: 60px;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            padding: 10px;
+            overflow-y: auto;
+            height: calc(100% - 60px);
+        }
+
+        .gallery-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+
+        .image-container {
+            width: 100%;
+            /* 固定宽高比为1:1 */
+            aspect-ratio: 1;
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+            /* 添加固定尺寸 */
+            height: 160px;
+            width: 160px;
+        }
+
+        .gallery-image {
+            width: 100%;
+            height: 100%;
+            /* 修改为 cover 确保图片填充整个容器且保持比例 */
+            object-fit: cover;
+            /* 居中显示图片 */
+            object-position: center;
+        }
+
+        /* 添加图片尺寸信息显示 */
+        .image-size {
+            position: absolute;
+            bottom: 5px;
+            left: 5px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .image-container:hover .image-size {
+            opacity: 1;
+        }
+
+        .gallery-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .image-name {
+            width: 100%;
+            text-align: center;
+            font-size: 14px;
+            color: #333;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* 命名对话框样式 */
+        .naming-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+
+        .naming-dialog input {
+            width: 100%;
+            padding: 8px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .dialog-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .dialog-button {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .confirm-button {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .cancel-button {
+            background-color: #f0f0f0;
+            color: #333;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+        }
+
+        .image-controls {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            display: none;
+            gap: 5px;
+        }
+
+        .image-container:hover .image-controls {
+            display: flex;
+        }
+
+        .control-button {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255, 255, 255, 0.9);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        .control-button:hover {
+            background: white;
+        }
+
+        .edit-button {
+            color: #2196F3;
+        }
+
+        .delete-button {
+            color: #f44336;
+        }
+
+        .image-name {
+            position: relative;
+            padding: 4px;
+            border-radius: 4px;
+        }
+
+        .image-name.editing {
+            background-color: #fff;
+            border: 1px solid #ddd;
+        }
+
+        .image-name input {
+            width: 100%;
+            border: none;
+            background: none;
+            text-align: center;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .delete-confirm-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            text-align: center;
+        }
+
+        .delete-confirm-dialog p {
+            margin: 15px 0;
+            color: #333;
+        }
+
+        .delete-dialog-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .delete-button-confirm {
+            background-color: #f44336;
+            color: white;
+        }
+
+        .delete-button-cancel {
+            background-color: #f0f0f0;
+            color: #333;
+        }
+
+        /* 修改装饰区域比例为三分之一 */
+        #decoration-section {
+            flex: 1;
+            background-color: #f5f5f5;
+            padding: 15px;
+        }
+
+        .decoration-options {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr); /* 改为2列布局 */
+            gap: 15px;
+            height: 100%;
+            padding: 12px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .decoration-option {
+            background: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .decoration-option:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .decoration-option.active {
+            border-color: #2196F3;
+            background: #e3f2fd;
+        }
+
+        .decoration-image {
+            width: 80px;
+            height: 80px;
+            object-fit: contain;
+            margin-bottom: 4px;
+        }
+
+        .decoration-option span {
+            font-size: 14px;
+            color: #333;
+            font-weight: 500;
+            text-align: center;
+        }
+
+
+        .decoration-content {
+            text-align: center;
+        }
+
+        /* 生成实物图的背景图案 */
+        .led-image {
+            background: radial-gradient(circle at 50% 50%, #fff 0%, #fff 40%, #ffeb3b 60%, #fdd835 100%);
+            border-radius: 50%;
+            width: 80px;
+            height: 80px;
+            box-shadow: 0 0 15px rgba(255, 235, 59, 0.5);
+        }
+
+        .motor-image {
+            background: 
+                linear-gradient(45deg, #616161 25%, #757575 25%, #757575 50%, #616161 50%, #616161 75%, #757575 75%);
+            background-size: 20px 20px;
+            border-radius: 50%;
+            width: 80px;
+            height: 80px;
+            position: relative;
+        }
+
+        .motor-image::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            background: #424242;
+            border-radius: 50%;
+        }
+
+        .battery-image {
+            background: linear-gradient(to right, 
+                #4caf50 0%, #4caf50 80%,
+                #388e3c 80%, #388e3c 100%);
+            border-radius: 4px;
+            width: 80px;
+            height: 40px;
+            position: relative;
+            margin: 20px 0;
+        }
+
+        .battery-image::after {
+            content: '';
+            position: absolute;
+            right: -8px;
+            top: 25%;
+            width: 8px;
+            height: 50%;
+            background: #388e3c;
+            border-radius: 0 2px 2px 0;
+        }
+
+        .speaker-image {
+            background: #424242;
+            border-radius: 50%;
+            width: 80px;
+            height: 80px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .speaker-image::after {
+            content: '';
+            width: 40px;
+            height: 40px;
+            background: #757575;
+            border-radius: 50%;
+        }
+
+        @media (max-width: 768px) {
+            #right-section {
+                width: 100%;
+            }
+        }
+
+        .image-controls {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            display: none;
+            gap: 5px;
+        }
+
+        .image-container:hover .image-controls {
+            display: flex;
+        }
+
+        .control-button {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255, 255, 255, 0.9);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        .control-button:hover {
+            background: white;
+        }
+
+        .edit-button {
+            color: #2196F3;
+        }
+
+        .delete-button {
+            color: #f44336;
+        }
+
+        .image-name {
+            position: relative;
+            padding: 4px;
+            border-radius: 4px;
+        }
+
+        .image-name.editing {
+            background-color: #fff;
+            border: 1px solid #ddd;
+        }
+
+        .image-name input {
+            width: 100%;
+            border: none;
+            background: none;
+            text-align: center;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .delete-confirm-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            text-align: center;
+        }
+
+        .delete-confirm-dialog p {
+            margin: 15px 0;
+            color: #333;
+        }
+
+        .delete-dialog-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .delete-button-confirm {
+            background-color: #f44336;
+            color: white;
+        }
+
+        .delete-button-cancel {
+            background-color: #f0f0f0;
+            color: #333;
+        }
+
+        .decoration-option:hover {
+            background: #f0f0f0;
+            transform: translateY(-2px);
+        }
+
+        .decoration-option.active {
+            border-color: #2196F3;
+            background: #e3f2fd;
+        }
+
+        .decoration-icon {
+            width: 24px;
+            height: 24px;
+            margin-bottom: 4px;
+        }
+
+        /* 预览区域中的可拖动元素样式 */
+        .draggable-element {
+            position: absolute;
+            cursor: move;
+            user-select: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .draggable-element svg {
+            width: 32px;
+            height: 32px;
+        }
+
+        .draggable-element .label {
+            font-size: 12px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+
+        /* 预览区域样式调整 */
+        #preview-area {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: #f5f5f5;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <section id="left-section">
+        <h2>Steps</h2>
+        <div id="preview-container">
+            <img id="preview-image" src="" alt="preview" style="display: none;">
+        </div>
+    </section>
+
+    <section id="right-section">
+        <div id="image-gallery">
+            <h2>Library</h2>
+            <button id="upload-button">Upload</button>
+            <input type="file" id="file-input" multiple accept="image/*">
+            <div id="gallery-grid"></div>
+        </div>
+        <div id="decoration-section"></div>
+    </section>
+
+    <script>
+        const uploadButton = document.getElementById('upload-button');
+        const fileInput = document.getElementById('file-input');
+        const galleryGrid = document.getElementById('gallery-grid');
+        const previewImage = document.getElementById('preview-image');
+
+        // 默认图片数据 (包含12张图片)
+        const defaultImages = [
+            { url: 'Origami_instructions/Chicken(1).png', name: 'Chicken(1)' },
+            { url: 'Origami_instructions/Airplane(1).png', name: 'Airplane(1)' },
+            { url: 'Origami_instructions/Car(1).png', name: 'Car(1)' },
+            { url: 'Origami_instructions/Ship(1).png', name: 'Ship(1)' },
+            { url: 'Origami_instructions/House(1).png', name: 'House(1)' },
+            { url: 'Origami_instructions/Golden Fish(1).png', name: 'Golden Fish(1)' },
+            { url: 'Origami_instructions/Fish(2).png', name: 'Fish(2)' },
+            { url: 'Origami_instructions/Piano(2).png', name: 'Piano(2)' },
+            { url: 'Origami_instructions/Windmill(2).png', name: 'Windmill(2)' },
+            { url: 'Origami_instructions/T-shirt(2).png', name: 'T-shirt(2)' },
+            { url: 'Origami_instructions/Fortune Teller(2).png', name: 'Fortune Teller(2)' },
+            { url: 'Origami_instructions/Heart(3).png', name: 'Heart(3)' }
+        ];
+
+        // 页面加载后显示默认图片
+        window.onload = function() {
+            defaultImages.forEach(image => {
+                const galleryItem = document.createElement('div');
+                galleryItem.className = 'gallery-item';
+
+                const imageContainer = document.createElement('div');
+                imageContainer.className = 'image-container';
+
+                const img = document.createElement('img');
+                img.src = image.url; // 使用默认图片 URL
+                img.className = 'gallery-image';
+
+                const nameLabel = document.createElement('div');
+                nameLabel.className = 'image-name';
+                nameLabel.textContent = image.name;
+                
+                imageContainer.addEventListener('click', () => {
+                    previewImage.src = img.src;
+                    previewImage.style.display = 'block';
+                });
+
+                imageContainer.appendChild(img);
+                galleryItem.appendChild(imageContainer);
+                galleryItem.appendChild(nameLabel);
+                galleryGrid.appendChild(galleryItem);
+            });
+        };
+
+        uploadButton.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', () => {
+            handleFiles(fileInput.files);
+        });
+
+        function createNamingDialog(file, callback) {
+            const overlay = document.createElement('div');
+            overlay.className = 'overlay';
+            document.body.appendChild(overlay);
+
+            const dialog = document.createElement('div');
+            dialog.className = 'naming-dialog';
+            dialog.innerHTML = `
+                <h3>Name the picture</h3>
+                <input type="text" placeholder="input name" value="${file.name.split('.')[0]}">
+                <div class="dialog-buttons">
+                    <button class="dialog-button cancel-button">cancel</button>
+                    <button class="dialog-button confirm-button">yes</button>
+                </div>
+            `;
+            document.body.appendChild(dialog);
+
+            const input = dialog.querySelector('input');
+            const confirmButton = dialog.querySelector('.confirm-button');
+            const cancelButton = dialog.querySelector('.cancel-button');
+
+            confirmButton.addEventListener('click', () => {
+                const imageName = input.value.trim() || file.name.split('.')[0];
+                dialog.remove();
+                overlay.remove();
+                callback(imageName);
+            });
+
+            cancelButton.addEventListener('click', () => {
+                dialog.remove();
+                overlay.remove();
+            });
+
+            input.addEventListener('keyup', (e) => {
+                if (e.key === 'Enter') {
+                    confirmButton.click();
+                }
+            });
+        }
+
+        function handleFiles(files) {
+            Array.from(files).forEach(file => {
+                if (file.type.startsWith('image/')) {
+                    createNamingDialog(file, (imageName) => {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            const galleryItem = document.createElement('div');
+                            galleryItem.className = 'gallery-item';
+
+                            const imageContainer = document.createElement('div');
+                            imageContainer.className = 'image-container';
+
+                            const img = document.createElement('img');
+                            img.src = e.target.result;
+                            img.className = 'gallery-image';
+
+                            const nameLabel = document.createElement('div');
+                            nameLabel.className = 'image-name';
+                            nameLabel.textContent = imageName;
+
+                            imageContainer.addEventListener('click', () => {
+                                previewImage.src = img.src;
+                                previewImage.style.display = 'block';
+                            });
+
+                            imageContainer.appendChild(img);
+                            galleryItem.appendChild(imageContainer);
+                            galleryItem.appendChild(nameLabel);
+                            galleryGrid.appendChild(galleryItem);
+                        };
+                        reader.readAsDataURL(file);
+                    });
+                }
+            });
+        }
+    </script>
+</body>
+</html>
